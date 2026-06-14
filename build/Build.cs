@@ -37,11 +37,11 @@ class Build : FalloutBuild
     // Deploy parameters (consumed by the targets below).
     //
     // [Secret] makes Fallout prompt for the value (masked) when not supplied via
-    // env var or command line, and keeps it out of logs. Locally we expect the
-    // matching env var set (e.g. CLOUDFLARE_API_TOKEN, UNIFI_API_KEY) before the
-    // run; in CI they come from GitHub Actions secrets.
+    // env var or command line, and keeps it out of logs. We bind to the same env
+    // names the Homelab secrets.env uses (CF_API_TOKEN, UNIFI_API_KEY, …) so every
+    // deploy flows through that one canonical file; in CI they come from secrets.
     // -------------------------------------------------------------------------
-    [Parameter("Cloudflare API token. Scopes: Account · Cloudflare Tunnel · Edit; Account · Access: Apps and Policies · Edit; Zone · DNS · Edit; Account · Account Settings · Read.")]
+    [Parameter("Cloudflare API token. Scopes: Account · Cloudflare Tunnel · Edit; Account · Access: Apps and Policies · Edit; Zone · DNS · Edit; Account · Account Settings · Read.", Name = "CF_API_TOKEN")]
     [Secret]
     readonly string CloudflareApiToken = null!;
 

@@ -22,7 +22,7 @@
         "SessionDuration": "24h",
         "PolicyName": "topaz-allow",
         "AllowEmails": [
-          "you@example.com"
+          "csimon@chrison.dev"
         ]
       }
     ]
