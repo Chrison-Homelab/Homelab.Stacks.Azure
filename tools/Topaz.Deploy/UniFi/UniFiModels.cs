@@ -53,6 +53,10 @@ internal sealed class UniFiNetworkCreateBody
     [JsonPropertyName("isolationEnabled")] public bool IsolationEnabled { get; set; }
     [JsonPropertyName("cellularBackupEnabled")] public bool CellularBackupEnabled { get; set; }
     [JsonPropertyName("internetAccessEnabled")] public bool InternetAccessEnabled { get; set; } = true;
+
+    // The firewall zone this VLAN lands in. Required by the gateway — a create
+    // without it fails api.network.validation.missing-zone-id.
+    [JsonPropertyName("zoneId")] public string ZoneId { get; set; } = string.Empty;
     [JsonPropertyName("ipv4Configuration")] public UniFiIpv4Configuration Ipv4Configuration { get; set; } = new();
 }
 
@@ -111,4 +115,72 @@ internal sealed class UniFiDnsARecordCreateBody
     [JsonPropertyName("domain")] public string Domain { get; set; } = string.Empty;
     [JsonPropertyName("ipv4Address")] public string Ipv4Address { get; set; } = string.Empty;
     [JsonPropertyName("ttlSeconds")] public int TtlSeconds { get; set; } = 300;
+}
+
+// ----- Firewall zones ------------------------------------------------------
+//
+// Zone-based firewall: every network sits in a zone, and policies allow/deny
+// traffic between zones. A network create now needs a zoneId, so we find-or-
+// create our own zone and add the VLAN to its networkIds. A GET returns each
+// zone with its id + name + the networks bound to it. name + networkIds are
+// both required on create/update (networkIds may be empty).
+public sealed class UniFiZone
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("networkIds")] public List<string>? NetworkIds { get; set; }
+}
+
+internal sealed class UniFiZoneCreateUpdateBody
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("networkIds")] public List<string> NetworkIds { get; set; } = new();
+}
+
+// ----- Firewall policies ---------------------------------------------------
+//
+// A zone-to-zone allow/deny rule. We only ever create ALLOW policies (the zone
+// starts default-deny). A GET returns each policy with its id + name so we can
+// find-or-create by name. UniFi assigns `index`, so we never send it.
+public sealed class UniFiPolicy
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+    [JsonPropertyName("action")] public UniFiPolicyAction? Action { get; set; }
+    [JsonPropertyName("source")] public UniFiPolicyEndpoint? Source { get; set; }
+    [JsonPropertyName("destination")] public UniFiPolicyEndpoint? Destination { get; set; }
+    [JsonPropertyName("ipProtocolScope")] public UniFiPolicyIpProtocolScope? IpProtocolScope { get; set; }
+    [JsonPropertyName("loggingEnabled")] public bool LoggingEnabled { get; set; }
+}
+
+public sealed class UniFiPolicyAction
+{
+    [JsonPropertyName("type")] public string Type { get; set; } = "ALLOW";
+    [JsonPropertyName("allowReturnTraffic")] public bool AllowReturnTraffic { get; set; } = true;
+}
+
+// Source/destination both reference a zone by id. The wire schema is the same
+// shape for either end, so we share one record.
+public sealed class UniFiPolicyEndpoint
+{
+    [JsonPropertyName("zoneId")] public string ZoneId { get; set; } = string.Empty;
+}
+
+public sealed class UniFiPolicyIpProtocolScope
+{
+    [JsonPropertyName("ipVersion")] public string IpVersion { get; set; } = "IPV4_AND_IPV6";
+}
+
+// Create body for an ALLOW policy. Mirrors UniFiPolicy on the write side minus
+// `id`/`index` (UniFi assigns the index). All seven fields below are required.
+internal sealed class UniFiPolicyCreateBody
+{
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("action")] public UniFiPolicyAction Action { get; set; } = new();
+    [JsonPropertyName("source")] public UniFiPolicyEndpoint Source { get; set; } = new();
+    [JsonPropertyName("destination")] public UniFiPolicyEndpoint Destination { get; set; } = new();
+    [JsonPropertyName("ipProtocolScope")] public UniFiPolicyIpProtocolScope IpProtocolScope { get; set; } = new();
+    [JsonPropertyName("loggingEnabled")] public bool LoggingEnabled { get; set; }
 }

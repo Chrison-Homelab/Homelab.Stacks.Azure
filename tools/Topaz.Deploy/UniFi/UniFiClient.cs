@@ -44,9 +44,11 @@ public sealed class UniFiClient
     public async Task<IReadOnlyList<UniFiNetwork>> ListNetworksAsync(string siteId, CancellationToken ct = default)
         => await GetPageAsync<UniFiNetwork>($"v1/sites/{siteId}/networks", ct);
 
-    // Create a GATEWAY-managed VLAN. dhcpStart/dhcpStop both non-empty enables a
-    // DHCP server with that range; either blank → static-only (DHCP sub-object
-    // omitted entirely). Body built here so the wire shape stays internal.
+    // Create a GATEWAY-managed VLAN in firewall zone `zoneId` (required by the
+    // gateway). dhcpStart/dhcpStop both non-empty enables a DHCP server with that
+    // range; either blank → static-only (DHCP sub-object omitted entirely). Body
+    // built here so the wire shape stays internal. Returns the created network so
+    // the caller can read its id (needed to add it to the zone's networkIds).
     public async Task<UniFiNetwork> CreateNetworkAsync(
         string siteId,
         string name,
@@ -55,6 +57,7 @@ public sealed class UniFiClient
         int prefixLength,
         string? dhcpStart,
         string? dhcpStop,
+        string zoneId,
         CancellationToken ct = default)
     {
         var dhcpEnabled = !string.IsNullOrWhiteSpace(dhcpStart) && !string.IsNullOrWhiteSpace(dhcpStop);
@@ -62,6 +65,7 @@ public sealed class UniFiClient
         {
             Name = name,
             VlanId = vlanId,
+            ZoneId = zoneId,
             Ipv4Configuration = new UniFiIpv4Configuration
             {
                 HostIpAddress = gateway,
@@ -75,6 +79,61 @@ public sealed class UniFiClient
             },
         };
         return await PostAsync<UniFiNetworkCreateBody, UniFiNetwork>($"v1/sites/{siteId}/networks", body, ct);
+    }
+
+    // ----- Firewall zones ------------------------------------------------
+
+    public async Task<IReadOnlyList<UniFiZone>> ListFirewallZonesAsync(string siteId, CancellationToken ct = default)
+        => await GetPageAsync<UniFiZone>($"v1/sites/{siteId}/firewall/zones", ct);
+
+    // Create a firewall zone. networkIds may be empty (the VLAN gets added via a
+    // follow-up PUT once it exists). Both fields are required on the wire.
+    public async Task<UniFiZone> CreateFirewallZoneAsync(
+        string siteId,
+        string name,
+        IReadOnlyList<string> networkIds,
+        CancellationToken ct = default)
+    {
+        var body = new UniFiZoneCreateUpdateBody { Name = name, NetworkIds = networkIds.ToList() };
+        return await PostAsync<UniFiZoneCreateUpdateBody, UniFiZone>($"v1/sites/{siteId}/firewall/zones", body, ct);
+    }
+
+    // Update a firewall zone — the only mutation we do to an existing zone, and
+    // only ever our own just-created one (to add the new VLAN to its networkIds).
+    public async Task<UniFiZone> UpdateFirewallZoneAsync(
+        string siteId,
+        string id,
+        string name,
+        IReadOnlyList<string> networkIds,
+        CancellationToken ct = default)
+    {
+        var body = new UniFiZoneCreateUpdateBody { Name = name, NetworkIds = networkIds.ToList() };
+        return await SendAsync<UniFiZoneCreateUpdateBody, UniFiZone>(HttpMethod.Put, $"v1/sites/{siteId}/firewall/zones/{id}", body, ct);
+    }
+
+    // ----- Firewall policies ---------------------------------------------
+
+    public async Task<IReadOnlyList<UniFiPolicy>> ListFirewallPoliciesAsync(string siteId, CancellationToken ct = default)
+        => await GetPageAsync<UniFiPolicy>($"v1/sites/{siteId}/firewall/policies", ct);
+
+    // Create a zone-to-zone ALLOW policy from src zone to dst zone. Body built
+    // here (like the network/DNS creates) so the wire shape stays internal; the
+    // src/dst zone ids resolved at apply-time flow straight through. We never send
+    // `index` — UniFi assigns it.
+    public async Task<UniFiPolicy> CreateFirewallPolicyAsync(
+        string siteId,
+        string name,
+        string sourceZoneId,
+        string destinationZoneId,
+        CancellationToken ct = default)
+    {
+        var body = new UniFiPolicyCreateBody
+        {
+            Name = name,
+            Source = new UniFiPolicyEndpoint { ZoneId = sourceZoneId },
+            Destination = new UniFiPolicyEndpoint { ZoneId = destinationZoneId },
+        };
+        return await PostAsync<UniFiPolicyCreateBody, UniFiPolicy>($"v1/sites/{siteId}/firewall/policies", body, ct);
     }
 
     public async Task<IReadOnlyList<UniFiDnsPolicy>> ListDnsPoliciesAsync(string siteId, CancellationToken ct = default)

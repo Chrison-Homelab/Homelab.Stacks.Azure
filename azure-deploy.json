@@ -34,8 +34,10 @@
   },
   "UniFi": {
     "Site": "Default",
+    "MgmtZone": "Internal",
     "Network": {
       "Name": "Azure Lab",
+      "Zone": "Azure",
       "VlanId": 1050,
       "Gateway": "10.50.0.1",
       "PrefixLength": 16,

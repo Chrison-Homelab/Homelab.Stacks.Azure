@@ -24,18 +24,24 @@ public sealed record NetworkProvisionResult(
 public sealed class NetworkProvisioner
 {
     private readonly UniFiClient _unifi;
+    private readonly UniFiZoneReconciler _zone;
     private readonly UniFiNetworkReconciler _network;
+    private readonly UniFiPolicyReconciler _policy;
     private readonly UniFiDnsReconciler _dns;
     private readonly ILogger<NetworkProvisioner> _log;
 
     public NetworkProvisioner(
         UniFiClient unifi,
+        UniFiZoneReconciler zone,
         UniFiNetworkReconciler network,
+        UniFiPolicyReconciler policy,
         UniFiDnsReconciler dns,
         ILogger<NetworkProvisioner>? log = null)
     {
         _unifi = unifi;
+        _zone = zone;
         _network = network;
+        _policy = policy;
         _dns = dns;
         _log = log ?? NullLogger<NetworkProvisioner>.Instance;
     }
@@ -54,7 +60,9 @@ public sealed class NetworkProvisioner
         var unifi = new UniFiClient(http, key, loggerFactory.CreateLogger<UniFiClient>());
         return new NetworkProvisioner(
             unifi,
+            new UniFiZoneReconciler(unifi, loggerFactory.CreateLogger<UniFiZoneReconciler>()),
             new UniFiNetworkReconciler(unifi, loggerFactory.CreateLogger<UniFiNetworkReconciler>()),
+            new UniFiPolicyReconciler(unifi, loggerFactory.CreateLogger<UniFiPolicyReconciler>()),
             new UniFiDnsReconciler(unifi, loggerFactory.CreateLogger<UniFiDnsReconciler>()),
             loggerFactory.CreateLogger<NetworkProvisioner>());
     }
@@ -80,11 +88,15 @@ public sealed class NetworkProvisioner
         }
         _log.LogDebug("unifi site={SiteId} ({Name})", site.Id, site.Name);
 
-        // 2. Build plan list — VLAN first, then the Local DNS records.
-        var plans = new List<ResourcePlan>
-        {
-            await _network.PlanAsync(site.Id, unifi.Network, ct),
-        };
+        // 2. Build plan list. Order matters for the deferred-id chain: the zone
+        //    must plan first (its id provider feeds the network + policies), then
+        //    the VLAN (+ the zone-membership PUT), then the allow-policies, then
+        //    the Local DNS records. Every closure resolves ids at apply-time, so
+        //    dry-run renders without any of them firing.
+        var (zonePlan, zoneIdProvider) = await _zone.PlanAsync(site.Id, unifi.Network.Zone, ct);
+        var plans = new List<ResourcePlan> { zonePlan };
+        plans.AddRange(await _network.PlanAsync(site.Id, unifi.Network, unifi.Network.Zone, zoneIdProvider, ct));
+        plans.AddRange(await _policy.PlanAsync(site.Id, unifi.Network.Zone, unifi.MgmtZone, zoneIdProvider, ct));
         plans.AddRange(await _dns.PlanAsync(site.Id, unifi.DnsTarget, unifi.DnsDomains, ct));
 
         // 3. Render.

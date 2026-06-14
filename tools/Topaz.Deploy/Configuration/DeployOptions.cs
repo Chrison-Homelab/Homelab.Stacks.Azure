@@ -71,6 +71,10 @@ public sealed class UniFiOptions
     public NetworkSpec Network { get; init; } = new();
     public string DnsTarget { get; init; } = string.Empty;
     public List<string> DnsDomains { get; init; } = new();
+
+    // The source firewall zone allowed inbound to the VLAN's zone — where the
+    // deploy/mgmt workstation lives, so it can SSH the LXC. Resolved by name.
+    public string MgmtZone { get; init; } = "Internal";
 }
 
 // A GATEWAY-managed VLAN. Keyed by VlanId (the gateway's natural unique key).
@@ -80,6 +84,10 @@ public sealed class UniFiOptions
 public sealed class NetworkSpec
 {
     public string Name { get; init; } = string.Empty;
+
+    // The firewall zone the VLAN lands in (find-or-create by name). The zone
+    // starts default-deny; the deploy opens only the allow-paths it needs.
+    public string Zone { get; init; } = "Azure";
     public int VlanId { get; init; }
     public string Gateway { get; init; } = string.Empty;
     public int PrefixLength { get; init; } = 24;
