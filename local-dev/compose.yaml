@@ -1,0 +1,64 @@
+# Topaz — local Azure emulator (https://topaz.thecloudtheory.com)
+# Works with both `docker compose` (OrbStack) and `podman compose`.
+#
+#   docker compose up -d        # start (OrbStack)
+#   docker compose logs -f      # follow logs
+#   docker compose down         # stop (keeps the named volume)
+#   docker compose pull         # grab a newer image, then `up -d` again
+#
+services:
+  topaz:
+    image: thecloudtheory/topaz-host:v1.6.89-beta   # `latest` as of 2026-06-10; pinned for reproducibility
+    container_name: topaz
+    restart: unless-stopped
+    ports:
+      # --- Resource Manager / control plane ---
+      - "8899:8899"   # ARM, Service Bus & Container Registry control plane (HTTPS)
+      - "443:443"     # ARM + Key Vault as the Azure CLI expects them (HTTPS, privileged)
+      # --- Key Vault ---
+      - "8898:8898"   # Key Vault data plane for SDKs (HTTPS)
+      # --- Storage (blob / table / queue / file share one port) ---
+      - "8891:8891"   # Storage (HTTPS)
+      # --- Event Hub ---
+      - "8897:8897"   # Event Hub (HTTPS)
+      - "8888:8888"   # Event Hub (AMQP)
+      # --- Service Bus ---
+      - "8887:8887"   # Service Bus (HTTPS)
+      - "8889:8889"   # Service Bus (AMQP)
+      - "5671:5671"   # Service Bus (AMQP/TLS)
+      # --- Container Registry ---
+      - "8892:8892"   # Container Registry data plane (HTTPS)
+      # --- CLI auth helper ---
+      - "44380:44380" # HTTP CONNECT proxy for `az login` ROPC on macOS/Linux
+    volumes:
+      - topaz-data:/app/.topaz   # persists emulator state across restarts
+    networks:
+      default:
+        # the portal connects to the host by this name; it also matches the
+        # host's TLS cert, so HTTPS between the two containers validates cleanly
+        aliases:
+          - topaz.local.dev
+
+  # Web UI for the emulator. Versioned separately from the host but released
+  # together — keep both on the same v1.6 line (see the host tag above).
+  portal:
+    image: thecloudtheory/topaz-portal:v1.6.93-beta
+    container_name: topaz-portal
+    restart: unless-stopped
+    ports:
+      - "8900:8080"   # portal UI (HTTP) -> http://localhost:8900
+    environment:
+      # ARM endpoint of the host, reached over the compose network
+      - Topaz__ArmBaseUrl=https://topaz.local.dev:8899
+      # trust the host's self-signed CA (.NET on Linux honors SSL_CERT_FILE via
+      # OpenSSL) so the server-side login token request validates
+      - SSL_CERT_FILE=/certs/topaz.crt
+    volumes:
+      # host's baked-in self-signed cert (CN/SAN = *.topaz.local.dev), extracted
+      # from the host image; stable across restarts of this tag
+      - ./certs/topaz.crt:/certs/topaz.crt:ro
+    depends_on:
+      - topaz
+
+volumes:
+  topaz-data:

@@ -1,0 +1,12 @@
+# Build artifacts
+**/bin/
+**/obj/
+
+# Fallout scratch
+.nuke/temp/
+
+# Secrets / per-host state (the connector token etc. are written at deploy time)
+**/stack.env
+
+# macOS
+.DS_Store

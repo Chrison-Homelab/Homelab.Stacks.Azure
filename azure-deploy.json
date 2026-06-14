@@ -1,0 +1,75 @@
+{
+  "Cloudflare": {
+    "Zone": "chrison.dev",
+    "Tunnels": [
+      {
+        "Name": "topaz",
+        "Hostnames": [
+          {
+            "Hostname": "topaz.chrison.dev",
+            "Service": "http://portal:8080"
+          }
+        ],
+        "Catchall": "http_status:404"
+      }
+    ]
+  },
+  "Access": {
+    "Apps": [
+      {
+        "Hostname": "topaz.chrison.dev",
+        "Name": "Topaz Portal",
+        "SessionDuration": "24h",
+        "PolicyName": "topaz-allow",
+        "AllowEmails": [
+          "you@example.com"
+        ]
+      }
+    ]
+  },
+  "Remote": {
+    "Host": "topaz-lxc",
+    "User": "chris",
+    "StackDir": "/home/chris/stacks/topaz"
+  },
+  "UniFi": {
+    "Site": "Default",
+    "Network": {
+      "Name": "Azure Lab",
+      "VlanId": 1050,
+      "Gateway": "10.50.0.1",
+      "PrefixLength": 16,
+      "DhcpStart": "10.50.0.100",
+      "DhcpStop": "10.50.0.200"
+    },
+    "DnsTarget": "10.50.0.10",
+    "DnsDomains": [
+      "*.topaz.local.dev",
+      "topaz.local.dev",
+      "*.storage.topaz.local.dev",
+      "*.blob.storage.topaz.local.dev",
+      "*.table.storage.topaz.local.dev",
+      "*.queue.storage.topaz.local.dev",
+      "*.file.storage.topaz.local.dev",
+      "*.vault.topaz.local.dev",
+      "*.keyvault.topaz.local.dev",
+      "*.servicebus.topaz.local.dev",
+      "*.eventhub.topaz.local.dev",
+      "*.cr.topaz.local.dev"
+    ]
+  },
+  "Lxc": {
+    "Node": "desktop-01",
+    "VmId": 2009,
+    "Hostname": "topaz",
+    "Template": "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst",
+    "RootfsStorage": "local-lvm",
+    "DiskGb": 8,
+    "Cores": 2,
+    "MemoryMb": 2048,
+    "Ip": "10.50.0.10/16",
+    "Gateway": "10.50.0.1",
+    "Bridge": "vmbr0",
+    "SshPublicKeyFile": "~/.ssh/id_ed25519.pub"
+  }
+}

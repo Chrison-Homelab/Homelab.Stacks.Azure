@@ -1,0 +1,84 @@
+# Topaz — local Azure emulator, homelab stack (azure-lab VLAN 1050 / 10.50.0.0/16).
+#
+# Three services on one bridge network inside the `topaz` LXC (vmid 2009, desktop-01):
+#   - topaz      : the emulator host. Serves ARM/Storage/Key Vault/Service Bus/
+#                  Event Hub/ACR on its native ports with its built-in
+#                  *.topaz.local.dev self-signed cert. Ports are published on the
+#                  LXC so LAN clients reach them at 10.50.0.10:<port>.
+#   - portal     : Blazor web UI. Internal-only + published on :8080 for the LAN.
+#                  Reached publicly via the tunnel (topaz.chrison.dev).
+#   - cloudflared: remotely-managed tunnel; ingress lives in Cloudflare (pushed by
+#                  bin/provision.ps1). Only needs $TUNNEL_TOKEN to dial out.
+#
+# Wildcard DNS for *.topaz.local.dev -> 10.50.0.10 is served by UniFi Local DNS
+# on the gateway (see README), NOT by this stack — so it survives stack downtime.
+#
+# The emulator's domain (topaz.local.dev) is hardcoded in the image and cannot be
+# changed — chrison.dev is used only for the public portal hostname. See README.
+
+name: topaz
+
+services:
+  topaz:
+    image: thecloudtheory/topaz-host:${TOPAZ_VERSION:-v1.6.89-beta}
+    container_name: topaz
+    restart: unless-stopped
+    # Default command (built-in *.topaz.local.dev cert) is correct for the LAN.
+    # Docker runs as root in the LXC, so binding 443 is fine — no rootless sysctl.
+    ports:
+      - "443:443"       # ARM + Key Vault as the Azure CLI expects them (HTTPS)
+      - "8899:8899"     # ARM / Service Bus & ACR control plane (HTTPS)
+      - "8898:8898"     # Key Vault data plane for SDKs (HTTPS)
+      - "8891:8891"     # Storage: blob/table/queue/file (HTTPS)
+      - "8897:8897"     # Event Hub (HTTPS)
+      - "8888:8888"     # Event Hub (AMQP)
+      - "8887:8887"     # Service Bus (HTTPS)
+      - "8889:8889"     # Service Bus (AMQP)
+      - "5671:5671"     # Service Bus (AMQP/TLS)
+      - "8892:8892"     # Container Registry data plane (HTTPS)
+      - "44380:44380"   # HTTP CONNECT proxy for `az login` ROPC
+    volumes:
+      - topaz-data:/app/.topaz
+    networks:
+      default:
+        # the portal reaches the host by this name; it also matches the built-in
+        # cert, so HTTPS between the two containers validates cleanly
+        aliases:
+          - topaz.local.dev
+
+  portal:
+    image: thecloudtheory/topaz-portal:${PORTAL_VERSION:-v1.6.93-beta}
+    container_name: topaz-portal
+    restart: unless-stopped
+    ports:
+      - "8080:8080"     # LAN access: http://10.50.0.10:8080 (and via the tunnel)
+    environment:
+      - Topaz__ArmBaseUrl=https://topaz.local.dev:8899
+      # trust the host's self-signed CA (.NET on Linux honors SSL_CERT_FILE) so
+      # the server-side login token request validates. ./certs/topaz.crt is
+      # refreshed from the running image by bin/deploy.ps1.
+      - SSL_CERT_FILE=/certs/topaz.crt
+    volumes:
+      - ./certs/topaz.crt:/certs/topaz.crt:ro
+      # persist DataProtection keys so portal sessions survive restarts
+      - portal-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      - topaz
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: topaz-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN is required - run bin/deploy.ps1 or set via stack.env}
+    depends_on:
+      - portal
+
+volumes:
+  topaz-data:
+  portal-keys:
+
+networks:
+  default:
+    driver: bridge

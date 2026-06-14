@@ -1,0 +1,7 @@
+# Connector token + any local secrets live here — never commit.
+stack.env
+
+# topaz.crt is refreshed from the running image at deploy time. The committed
+# copy is a convenience fallback; ignore local refreshes if you prefer.
+# (Comment the next line out if you want to track the cert in git.)
+#certs/topaz.crt
