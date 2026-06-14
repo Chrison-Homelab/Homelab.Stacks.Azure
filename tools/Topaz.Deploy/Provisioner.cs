@@ -55,19 +55,24 @@ public sealed class Provisioner
     }
 
     // Convenience constructor for the Fallout build target — wires up its own
-    // graph from a token string and a DeployOptions POCO.
-    public static Provisioner Create(string cloudflareApiToken, ILoggerFactory? loggerFactory = null)
+    // graph from token strings and a DeployOptions POCO.
+    //
+    // Two token slots: `cloudflareApiToken` drives the tunnel/ingress/DNS
+    // reconcile, `accessApiToken` drives the Cloudflare Access reconcile. They may
+    // be the same value today (injected twice) and split into separately-scoped,
+    // dedicated tokens later — the reconcilers don't care which they're handed.
+    public static Provisioner Create(string cloudflareApiToken, string accessApiToken, ILoggerFactory? loggerFactory = null)
     {
         loggerFactory ??= NullLoggerFactory.Instance;
         var http = new HttpClient();
-        var tokens = new InlineCloudflareTokenSource(cloudflareApiToken);
-        var cf = new CloudflareClient(http, tokens, loggerFactory.CreateLogger<CloudflareClient>());
+        var cf = new CloudflareClient(http, new InlineCloudflareTokenSource(cloudflareApiToken), loggerFactory.CreateLogger<CloudflareClient>());
+        var cfAccess = new CloudflareClient(http, new InlineCloudflareTokenSource(accessApiToken), loggerFactory.CreateLogger<CloudflareClient>());
         return new Provisioner(
             cf,
             new TunnelReconciler(cf, loggerFactory.CreateLogger<TunnelReconciler>()),
             new DnsRecordReconciler(cf, loggerFactory.CreateLogger<DnsRecordReconciler>()),
             new IngressReconciler(cf, loggerFactory.CreateLogger<IngressReconciler>()),
-            new AccessReconciler(cf, loggerFactory.CreateLogger<AccessReconciler>()),
+            new AccessReconciler(cfAccess, loggerFactory.CreateLogger<AccessReconciler>()),
             loggerFactory.CreateLogger<Provisioner>());
     }
 

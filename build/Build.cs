@@ -41,9 +41,19 @@ class Build : FalloutBuild
     // names the Homelab secrets.env uses (CF_API_TOKEN, UNIFI_API_KEY, …) so every
     // deploy flows through that one canonical file; in CI they come from secrets.
     // -------------------------------------------------------------------------
-    [Parameter("Cloudflare API token. Scopes: Account · Cloudflare Tunnel · Edit; Account · Access: Apps and Policies · Edit; Zone · DNS · Edit; Account · Account Settings · Read.", Name = "CF_API_TOKEN")]
+    [Parameter("Cloudflare API token for tunnel + ingress + DNS. Scopes: Account · Cloudflare Tunnel · Edit; Zone · DNS · Edit; Account · Account Settings · Read.", Name = "CF_API_TOKEN")]
     [Secret]
     readonly string CloudflareApiToken = null!;
+
+    // Dedicated token slot for Cloudflare Access. Falls back to CF_API_TOKEN when
+    // unset, so today the same token is injected into both paths (tunnel/DNS and
+    // Access); set CF_ACCESS_API_TOKEN to split them into separately-scoped tokens.
+    [Parameter("Cloudflare API token for Access. Scope: Account · Access: Apps and Policies · Edit. Defaults to CF_API_TOKEN when unset.", Name = "CF_ACCESS_API_TOKEN")]
+    [Secret]
+    readonly string CloudflareAccessApiToken = "";
+
+    // The Access token if a dedicated one was supplied, else reuse CF_API_TOKEN.
+    string EffectiveAccessToken => string.IsNullOrWhiteSpace(CloudflareAccessApiToken) ? CloudflareApiToken : CloudflareAccessApiToken;
 
     // ----- UniFi (ProvisionNetwork) -----
     [Parameter("UniFi Network integration API key (X-API-KEY). Generate in the console: Settings → Control Plane → Integrations.", Name = "UNIFI_API_KEY")]
@@ -119,7 +129,7 @@ class Build : FalloutBuild
     async Task RunProvisionAsync()
     {
         var options = LoadOptions();
-        var provisioner = Provisioner.Create(CloudflareApiToken);
+        var provisioner = Provisioner.Create(CloudflareApiToken, EffectiveAccessToken);
         var result = await provisioner.RunAsync(new ProvisionRequest(options, DryRun, Output));
         if (result.ExitCode != 0)
         {
