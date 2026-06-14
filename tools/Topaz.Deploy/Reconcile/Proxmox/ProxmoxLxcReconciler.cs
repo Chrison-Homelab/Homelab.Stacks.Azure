@@ -115,7 +115,7 @@ public sealed class ProxmoxLxcReconciler
                     FieldChange.Diff("rootfs", null, $"{spec.RootfsStorage}:{spec.DiskGb}"),
                     FieldChange.Diff("cores/memory", null, $"{spec.Cores}c / {spec.MemoryMb}MB"),
                     FieldChange.Diff("net0", null, $"eth0@{spec.Bridge} tag={vlanId} ip={spec.Ip} gw={spec.Gateway}"),
-                    FieldChange.Diff("features", null, "nesting=1,keyctl=1"),
+                    FieldChange.Diff("features", null, "nesting=1"),
                 },
                 apply: async c =>
                 {
@@ -124,7 +124,7 @@ public sealed class ProxmoxLxcReconciler
                     await _pve.WaitForTaskAsync(spec.Node, upid, ct: c);
                     _log.LogInformation("Created LXC {VmId}", spec.VmId);
                 },
-                note: "unprivileged, nesting+keyctl for Docker"));
+                note: "unprivileged, nesting=1 for Docker"));
         }
 
         // Ensure running. When the CT is brand-new we can't read its status yet,
@@ -182,8 +182,11 @@ public sealed class ProxmoxLxcReconciler
     }
 
     // Proxmox `pct create` parameters as a form body. ssh-public-keys carries
-    // the operator's pubkey so we can SSH in for the Docker install; features
-    // nesting+keyctl are REQUIRED for Docker inside an unprivileged LXC.
+    // the operator's pubkey so we can SSH in for the Docker install. features
+    // nesting=1 is what Docker needs in an unprivileged LXC; keyctl is omitted
+    // because the Proxmox API rejects it for non-root@pam tokens ("changing
+    // feature flags (except nesting) is only allowed for root@pam") and Docker
+    // runs fine without it for this stack.
     private static IReadOnlyDictionary<string, string> BuildCreateBody(LxcSpec spec, int vlanId)
     {
         var net0 = $"name=eth0,bridge={spec.Bridge},tag={vlanId},ip={spec.Ip},gw={spec.Gateway}";
@@ -198,7 +201,7 @@ public sealed class ProxmoxLxcReconciler
             ["memory"] = spec.MemoryMb.ToString(),
             ["swap"] = "512",
             ["unprivileged"] = "1",
-            ["features"] = "nesting=1,keyctl=1",
+            ["features"] = "nesting=1",
             ["net0"] = net0,
             ["onboot"] = "1",
         };
@@ -234,7 +237,15 @@ public sealed class ProxmoxLxcReconciler
         }
 
         _log.LogInformation("Installing Docker in CT {VmId} via get.docker.com", spec.VmId);
-        var install = ssh.Run("curl -fsSL https://get.docker.com | sh", TimeSpan.FromMinutes(5));
+        // The Debian "standard" template ships without curl, and a bare
+        // `curl … | sh` would swallow that failure (pipe exit = sh's). Install
+        // curl+ca-certificates first, and `set -o pipefail` so a download failure
+        // actually fails the step instead of silently running nothing.
+        var install = ssh.Run(
+            "set -o pipefail; export DEBIAN_FRONTEND=noninteractive; " +
+            "apt-get update -qq && apt-get install -y -qq curl ca-certificates && " +
+            "curl -fsSL https://get.docker.com | sh",
+            TimeSpan.FromMinutes(8));
         if (install.ExitStatus != 0)
         {
             throw new InvalidOperationException(

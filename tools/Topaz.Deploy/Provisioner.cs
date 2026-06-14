@@ -115,13 +115,16 @@ public sealed class Provisioner
         foreach (var spec in deploy.Cloudflare.Tunnels)
         {
             var tr = await _tunnels.PlanAsync(accountId, spec.Name, ct);
+            var trIndex = tunnelResults.Count;
             tunnelResults.Add(tr);
             plans.Add(tr.Plan);
 
-            // Deferred id provider — reads tr.Id at the time the closure is
-            // called. Apply rebinds the entry below post-create so DNS/ingress
-            // closures see the real id.
-            Func<string> idProvider = () => tr.Id;
+            // Deferred id provider — reads the LIST SLOT (not the captured `tr`)
+            // at call time. TunnelReconcileResult is an immutable record, so the
+            // post-create refresh below does `tunnelResults[idx] = … with { Id }`,
+            // replacing the slot; a closure over `tr` would keep returning the
+            // pre-create "<pending>" id (the bug that 405'd the ingress PUT).
+            Func<string> idProvider = () => tunnelResults[trIndex].Id;
 
             plans.Add(await _ingress.PlanAsync(accountId, idProvider, tr.WillCreate, spec, ct));
             foreach (var h in spec.Hostnames)

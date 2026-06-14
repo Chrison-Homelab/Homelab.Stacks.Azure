@@ -32,7 +32,9 @@ public sealed class IngressReconciler
             current = await _cf.GetTunnelConfigurationAsync(accountId, tunnelIdProvider(), ct);
         }
 
-        var currentRules = current?.Config.Ingress ?? new List<CfIngressRule>();
+        // Null-safe through Config too: an existing tunnel with no config yet comes
+        // back as a non-null envelope with a null Config (our half-applied state).
+        var currentRules = current?.Config?.Ingress ?? new List<CfIngressRule>();
         var changes = DiffRules(currentRules, target.Config.Ingress);
 
         if (!tunnelWillBeCreated && changes.All(c => !c.IsChange))

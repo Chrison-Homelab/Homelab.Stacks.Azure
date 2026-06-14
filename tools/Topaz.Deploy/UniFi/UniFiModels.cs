@@ -157,7 +157,11 @@ public sealed class UniFiPolicy
 public sealed class UniFiPolicyAction
 {
     [JsonPropertyName("type")] public string Type { get; set; } = "ALLOW";
-    [JsonPropertyName("allowReturnTraffic")] public bool AllowReturnTraffic { get; set; } = true;
+    // Inter-zone policies reject allowReturnTraffic=true ("Return traffic can't be
+    // allowed") — the stateful firewall already permits the return path of an
+    // allowed connection. The flag only applies to making an intra-zone rule
+    // bidirectional, which we don't need. Keep it false.
+    [JsonPropertyName("allowReturnTraffic")] public bool AllowReturnTraffic { get; set; }
 }
 
 // Source/destination both reference a zone by id. The wire schema is the same

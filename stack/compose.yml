@@ -60,8 +60,11 @@ services:
       - SSL_CERT_FILE=/certs/topaz.crt
     volumes:
       - ./certs/topaz.crt:/certs/topaz.crt:ro
-      # persist DataProtection keys so portal sessions survive restarts
-      - portal-keys:/home/app/.aspnet/DataProtection-Keys
+      # NOTE: do NOT mount a named volume at /home/app/.aspnet/DataProtection-Keys —
+      # the portal runs as the non-root `app` user and a root-owned named volume
+      # there is unwritable → DataProtection throws → HTTP 500. Letting the keys
+      # live on the container's own (app-writable) layer just works; the only cost
+      # is portal sessions resetting if the container is recreated.
     depends_on:
       - topaz
 
@@ -77,7 +80,6 @@ services:
 
 volumes:
   topaz-data:
-  portal-keys:
 
 networks:
   default:

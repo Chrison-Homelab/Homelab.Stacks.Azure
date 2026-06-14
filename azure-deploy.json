@@ -28,9 +28,10 @@
     ]
   },
   "Remote": {
-    "Host": "topaz-lxc",
-    "User": "chris",
-    "StackDir": "/home/chris/stacks/topaz"
+    "Host": "10.50.0.10",
+    "User": "root",
+    "IdentityFile": "~/.ssh/id_ed25519",
+    "StackDir": "/root/stacks/topaz"
   },
   "UniFi": {
     "Site": "Default",

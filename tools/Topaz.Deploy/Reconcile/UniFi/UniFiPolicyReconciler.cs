@@ -41,7 +41,9 @@ public sealed class UniFiPolicyReconciler
         var existingPolicies = await _unifi.ListFirewallPoliciesAsync(siteId, ct);
         var plans = new List<ResourcePlan>(2);
 
-        // Egress: Azure → External (source resolved at apply-time).
+        // Egress: Azure → External (source resolved at apply-time). Destination is
+        // the WAN zone, which rejects allowReturnTraffic — return is handled by the
+        // gateway's NAT/conntrack, so pass false.
         plans.Add(PlanPolicy(
             siteId,
             name: $"{azureZoneName} → Internet",
@@ -50,9 +52,12 @@ public sealed class UniFiPolicyReconciler
             srcDescription: azureZoneName,
             dstZoneIdProvider: () => externalZone.Id,
             dstDescription: ExternalZoneName,
+            allowReturnTraffic: false,
             ct));
 
-        // Ingress: MgmtZone → Azure (destination resolved at apply-time).
+        // Ingress: MgmtZone → Azure (destination resolved at apply-time). Internal→
+        // internal, so allowReturnTraffic=true — UniFi derives the (Return) policy
+        // so the LXC's replies (SSH, etc.) get back to the deploy box.
         plans.Add(PlanPolicy(
             siteId,
             name: $"{mgmtZoneName} → {azureZoneName}",
@@ -61,6 +66,7 @@ public sealed class UniFiPolicyReconciler
             srcDescription: mgmtZoneName,
             dstZoneIdProvider: azureZoneIdProvider,
             dstDescription: azureZoneName,
+            allowReturnTraffic: true,
             ct));
 
         return plans;
@@ -74,6 +80,7 @@ public sealed class UniFiPolicyReconciler
         string srcDescription,
         Func<string> dstZoneIdProvider,
         string dstDescription,
+        bool allowReturnTraffic,
         CancellationToken ct)
     {
         var existing = existingPolicies.FirstOrDefault(p =>
@@ -98,14 +105,14 @@ public sealed class UniFiPolicyReconciler
             name,
             new[]
             {
-                FieldChange.Diff("action", null, "ALLOW (allowReturnTraffic=true)"),
+                FieldChange.Diff("action", null, $"ALLOW (allowReturnTraffic={allowReturnTraffic.ToString().ToLowerInvariant()})"),
                 FieldChange.Diff("source", null, srcDescription),
                 FieldChange.Diff("destination", null, dstDescription),
                 FieldChange.Diff("ipProtocolScope", null, "IPV4_AND_IPV6"),
             },
             apply: async c =>
             {
-                var policy = await _unifi.CreateFirewallPolicyAsync(siteId, name, srcZoneIdProvider(), dstZoneIdProvider(), c);
+                var policy = await _unifi.CreateFirewallPolicyAsync(siteId, name, srcZoneIdProvider(), dstZoneIdProvider(), allowReturnTraffic, c);
                 _log.LogInformation("Created UniFi firewall policy {Name} ({Id})", name, policy.Id);
             },
             note: $"ALLOW {srcDescription} → {dstDescription}");

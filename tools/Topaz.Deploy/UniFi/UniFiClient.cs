@@ -120,16 +120,25 @@ public sealed class UniFiClient
     // here (like the network/DNS creates) so the wire shape stays internal; the
     // src/dst zone ids resolved at apply-time flow straight through. We never send
     // `index` — UniFi assigns it.
+    // allowReturnTraffic=true makes UniFi auto-derive a companion (Return) policy
+    // (connectionStateFilter RELATED,ESTABLISHED) so the reply path of an allowed
+    // connection works. REQUIRED for internal→internal rules (e.g. Mgmt→Azure, or
+    // the CT's SSH replies never get back). The API REJECTS true when the
+    // destination is the External/WAN zone ("Return traffic can't be allowed") —
+    // WAN egress return is handled by the gateway's NAT/conntrack anyway — so
+    // egress-to-Internet rules must pass false.
     public async Task<UniFiPolicy> CreateFirewallPolicyAsync(
         string siteId,
         string name,
         string sourceZoneId,
         string destinationZoneId,
+        bool allowReturnTraffic,
         CancellationToken ct = default)
     {
         var body = new UniFiPolicyCreateBody
         {
             Name = name,
+            Action = new UniFiPolicyAction { Type = "ALLOW", AllowReturnTraffic = allowReturnTraffic },
             Source = new UniFiPolicyEndpoint { ZoneId = sourceZoneId },
             Destination = new UniFiPolicyEndpoint { ZoneId = destinationZoneId },
         };
@@ -153,10 +162,26 @@ public sealed class UniFiClient
 
     // ----- Verb helpers --------------------------------------------------
 
+    // Fetches ALL pages. The integration API caps a page (~25 by default), so a
+    // single GET silently truncates large collections (e.g. 174 firewall
+    // policies) — which made find-or-create miss existing items and create
+    // duplicates. Loop on offset until we've seen totalCount.
     private async Task<IReadOnlyList<T>> GetPageAsync<T>(string path, CancellationToken ct)
     {
-        var page = await SendAsync<object, UniFiPage<T>>(HttpMethod.Get, path, null, ct);
-        return page?.Data ?? new List<T>();
+        const int limit = 200;
+        var all = new List<T>();
+        var offset = 0;
+        while (true)
+        {
+            var sep = path.Contains('?') ? '&' : '?';
+            var page = await SendAsync<object, UniFiPage<T>>(
+                HttpMethod.Get, $"{path}{sep}limit={limit}&offset={offset}", null, ct);
+            var items = page?.Data ?? new List<T>();
+            all.AddRange(items);
+            offset += items.Count;
+            if (items.Count == 0 || all.Count >= (page?.TotalCount ?? all.Count)) break;
+        }
+        return all;
     }
 
     private Task<TOut> PostAsync<TIn, TOut>(string path, TIn body, CancellationToken ct)
