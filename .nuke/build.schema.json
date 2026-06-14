@@ -102,7 +102,7 @@
   "allOf": [
     {
       "properties": {
-        "CloudflareApiToken": {
+        "CF_API_TOKEN": {
           "type": "string",
           "description": "Cloudflare API token. Scopes: Account · Cloudflare Tunnel · Edit; Account · Access: Apps and Policies · Edit; Zone · DNS · Edit; Account · Account Settings · Read",
           "default": "Secrets must be entered via 'nuke :secrets [profile]'"
