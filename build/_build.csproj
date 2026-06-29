@@ -26,4 +26,10 @@
     <ProjectReference Include="..\tools\Topaz.Deploy\Topaz.Deploy.csproj" />
   </ItemGroup>
 
+  <!-- Auto-install the Husky.NET git hooks (../.husky) on local build so the
+       pre-push guard is always active. Skipped in CI; never fails the build. -->
+  <Target Name="HuskyInstall" BeforeTargets="Build" Condition="'$(CI)' != 'true' And '$(HUSKY)' != '0'">
+    <Exec Command="dotnet tool restore" WorkingDirectory="$(MSBuildProjectDirectory)/.." ContinueOnError="true" StandardOutputImportance="Low" StandardErrorImportance="High" />
+    <Exec Command="dotnet husky install" WorkingDirectory="$(MSBuildProjectDirectory)/.." ContinueOnError="true" StandardOutputImportance="Low" StandardErrorImportance="High" />
+  </Target>
 </Project>
