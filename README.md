@@ -1,11 +1,31 @@
 # Homelab.Stacks.Azure — local Azure stack (Fallout IaC)
 
+[![Built with Fallout](https://img.shields.io/badge/built%20with-Fallout-8A2BE2)](https://github.com/Fallout-build/Fallout)
+[![Homelab stack](https://img.shields.io/badge/homelab-stack-0ea5e9)](https://github.com/Chrison-Homelab/Homelab)
+
 The homelab **Azure** stack: a local Azure environment emulated by
 [Topaz](https://topaz.thecloudtheory.com), deployed to its own LXC with the
 Portal exposed via a dedicated Cloudflare tunnel behind Access. The deploy is a
 **Fallout** build (the NUKE hard-fork, `Fallout.Common` from nuget.org) — C#
 targets, not shell — so it runs identically locally and on CI. Mounted as the
 `stacks/Azure` submodule of the Homelab superproject.
+
+The `Bootstrap` target reconciles the whole stack from bare metal in one chain —
+every reconciler is **add-only / find-or-create** and `--dry-run`-able:
+
+```mermaid
+flowchart LR
+  B["🧰 ./build.sh Bootstrap"] --> PN
+  subgraph chain["Fallout targets (add-only, --dry-run-able)"]
+    direction LR
+    PN["ProvisionNetwork"] --> PH["ProvisionHost"] --> PR["Provision"] --> UP["Up"]
+  end
+  PN -->|UnifiSharp| UNI["📡 UniFi<br/>VLAN 1050 + local DNS"]
+  PH -->|ProxmoxSharp + SSH| LXC["🖥️ LXC 2009 · desktop-01<br/>Docker host · 10.50.0.10"]
+  PR -->|Cloudflare API| CF["☁️ tunnel + Access<br/>topaz.chrison.dev"]
+  UP -->|SFTP + compose| TOPAZ["🟦 Topaz portal + host"]
+  LXC --- TOPAZ
+```
 
 ```
 build/Build.cs            Provision/ProvisionNetwork/ProvisionHost/Up/Bootstrap targets
