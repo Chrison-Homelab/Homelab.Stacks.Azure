@@ -86,11 +86,11 @@ class Build : FalloutBuild
     [Parameter("Output format for the provision targets: text (human, default) or json.")]
     readonly string DeployOutput = "text";
 
-    [Parameter("Image tag for the topaz emulator host. Default: v1.6.89-beta.")]
-    readonly string TopazVersion = "v1.6.89-beta";
+    [Parameter("Image tag for the topaz emulator host. Default: v1.10.222-preview.")]
+    readonly string TopazVersion = "v1.10.222-preview";
 
-    [Parameter("Image tag for the topaz portal. Default: v1.6.93-beta.")]
-    readonly string PortalVersion = "v1.6.93-beta";
+    [Parameter("Image tag for the topaz portal. Default: v1.11.19.")]
+    readonly string PortalVersion = "v1.11.19";
 
     // Populated by Provision when it applies; read by Up. Empty when Provision
     // ran in dry-run, in which case Up uses a placeholder token for its own

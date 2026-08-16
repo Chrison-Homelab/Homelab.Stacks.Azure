@@ -20,7 +20,10 @@ name: topaz
 
 services:
   topaz:
-    image: thecloudtheory/topaz-host:${TOPAZ_VERSION:-v1.6.89-beta}
+    # ⚠ host and portal version INDEPENDENTLY, and the tag suffix has changed over time
+    # (-beta → -preview → none). Check Docker Hub tags rather than assuming the two match,
+    # or that a GitHub release tag exists as an image tag — the portal's release tags do not.
+    image: thecloudtheory/topaz-host:${TOPAZ_VERSION:-v1.10.222-preview}
     container_name: topaz
     restart: unless-stopped
     # Default command (built-in *.topaz.local.dev cert) is correct for the LAN.
@@ -47,7 +50,7 @@ services:
           - topaz.local.dev
 
   portal:
-    image: thecloudtheory/topaz-portal:${PORTAL_VERSION:-v1.6.93-beta}
+    image: thecloudtheory/topaz-portal:${PORTAL_VERSION:-v1.11.19}
     container_name: topaz-portal
     restart: unless-stopped
     ports:
