@@ -43,33 +43,33 @@ below (VLAN, LXC, Local DNS) must exist first.
 > one Access app — nothing existing is touched, and `Provision --dry-run` shows the
 > plan before any write.
 
-## Apply (one-time infra — `proxmoxsharp`/`unifisharp` are read-only, so these are yours to run)
+## Apply (one-time infra)
 
-**1. UniFi — create the VLAN + Local DNS** (UI, or the API with a write-scoped key):
+**1. UniFi — the VLAN, and the Local DNS records:**
 - **Network:** Settings → Networks → New. Name `Azure Lab`, VLAN **1050**, subnet
-  **10.50.0.0/16**, gateway `10.50.0.1`, DHCP on.
-- **Local DNS:** Settings → Routing → Local DNS (or Settings → Network → Local DNS,
-  depending on UniFi OS version). Add records pointing at **`10.50.0.10`**.
-  Try a single wildcard first:
+  **10.50.0.0/16**, gateway `10.50.0.1`, DHCP on. Still by hand — `converge-unifi`
+  models port-forwards, DHCP reservations and static DNS, but not networks/VLANs yet.
+- **Local DNS: not a manual step any more.** All twelve `topaz.local.dev` records are
+  declared as IaC in the superproject's
+  [`Infrastructure/unifi/network.yaml`](https://github.com/Chrison-Homelab/Homelab/blob/main/Infrastructure/unifi/network.yaml)
+  under `staticDns` and reconciled by `converge-unifi` (Homelab#314). Nothing to click,
+  and a rebuild restores them:
 
-  | Record | Type | Value |
-  |--------|------|-------|
-  | `*.topaz.local.dev` | A | `10.50.0.10` |
-  | `topaz.local.dev` | A | `10.50.0.10` |
-
-  Then verify a *deep* name resolves: `dig +short myacct.blob.storage.topaz.local.dev`.
-  If UniFi's wildcard only matches one label (so the deep storage names fail),
-  add these fixed service suffixes too — the leftmost label is the only dynamic
-  part, so this set is complete:
-
+  ```bash
+  # from the superproject
+  homelab-infra converge-unifi Infrastructure/unifi/network.yaml           # dry run
+  homelab-infra converge-unifi Infrastructure/unifi/network.yaml --apply
   ```
-  *.storage.topaz.local.dev        *.blob.storage.topaz.local.dev
-  *.table.storage.topaz.local.dev  *.queue.storage.topaz.local.dev
-  *.file.storage.topaz.local.dev   *.vault.topaz.local.dev
-  *.keyvault.topaz.local.dev       *.servicebus.topaz.local.dev
-  *.eventhub.topaz.local.dev       *.cr.topaz.local.dev
-  ```
-  all → `10.50.0.10`.
+
+  They live there rather than in this repo because `staticDns` is a property of the
+  superproject-global `UnifiNetwork` shape — these are gateway state, not stack state.
+
+  **Why twelve records and not one wildcard:** UniFi's wildcard does match arbitrary
+  labels, but only against the suffix it is written for, and the Azure SDKs derive
+  endpoint hostnames per service family. Key Vault's authorizer specifically rejects any
+  host not ending in `.vault.topaz.local.dev`, so the deep names are load-bearing rather
+  than belt-and-braces. The leftmost label is the only dynamic part, so the set is
+  complete. Verify with a deep name: `dig +short myacct.blob.storage.topaz.local.dev`.
 
 > Local DNS lives on the gateway, so `*.topaz.local.dev` keeps resolving even when
 > the stack is down. (If you'd rather not maintain static entries, a dnsmasq
